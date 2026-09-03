@@ -1,0 +1,73 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Release Your Burden</title>
+<style>
+body{margin:0;background:#f5f1e8;font-family:Arial,sans-serif;color:#263238}.app{max-width:720px;margin:auto;padding:18px 16px 35px}
+header{text-align:center}header .big{font-size:44px}header h1{margin:5px;font-size:30px}header p{color:#68747a;line-height:1.45}
+.card{background:#fff;border-radius:21px;padding:23px;box-shadow:0 8px 28px #0001;margin:16px 0}h2{font-size:24px;margin:0 0 9px}.sub{color:#68747a;line-height:1.5}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:18px}.choice,.multi,.answer,.btn{border-radius:14px;padding:15px;font-size:16px;cursor:pointer}
+.choice{background:#fff;border:1px solid #d9dfdc;text-align:left;min-height:75px}.choice:hover,.multi:hover{background:#e8f0eb}.e{font-size:25px;display:block;margin-bottom:5px}
+.badge{display:inline-block;background:#e8f0eb;color:#527565;border-radius:20px;padding:7px 11px;font-size:13px;font-weight:bold}
+.answerrow{display:flex;gap:12px;margin-top:22px}.answer{flex:1;border:0;font-weight:bold}.yes{background:#e7f1ea}.no{background:#f7e5e0}
+.multi{display:block;width:100%;background:#fff;border:1px solid #d9dfdc;text-align:left;margin:9px 0}.selected{background:#e8f0eb!important;border-color:#5d7d6f!important}
+.btn{width:100%;border:0;background:#5d7d6f;color:#fff;margin-top:14px}.back{background:#e7ebe9;color:#263238}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.box{padding:15px;border-radius:14px}.in{background:#e8f1ea}.out{background:#f7e5e0}.box ul{padding-left:20px;line-height:1.55}
+.take{background:#fff7e5;border-radius:14px;padding:16px;margin:13px 0;line-height:1.5}.affirm{font-size:20px;line-height:1.45;text-align:center}
+@media(max-width:520px){.cols{grid-template-columns:1fr}}
+.audioBtn{display:inline-block;border:1px solid #d9dfdc;background:#f4f7f4;color:#263238;border-radius:13px;padding:11px 15px;font-size:15px;cursor:pointer;margin-top:10px}.audioBtn:hover{background:#e8f0eb}
+</style></head>
+<body><div class="app"><header><div class="big">🪨</div><h1>Release Your Burden</h1><p>Don't just know the answer. Discover your next step.</p></header><div id="app"></div></div>
+<script>
+// Fill these in after creating the Google Sheet and Cloud API key (see setup notes).
+const SHEET_ID="1C83XHZFPn1nyF2zpmca5alSyTIC4o6PKiukhR7HHdY0";
+const API_KEY="AIzaSyBUTSptHan6z-bPUkQiu32ujC97unSfxBI";
+// One tab per category. Each tab has columns: type | id | text | audio
+// To set the "Take a moment" audio for a category, add a row: meta | moment_audio | (blank) | <direct audio URL>
+// To set the "choice" commentary audio for a category, add a row: meta | choice_audio | (blank) | <direct audio URL>
+// If either is blank/missing for a category, that Play commentary button does nothing when clicked.
+const CATS=["relationship","studies","anger","mobile","confidence"];
+
+let B={};
+let st={id:null,feel:[],wait:[],cost:[],q:0,sol:[]};const A=document.getElementById("app");
+async function loadData(){
+A.innerHTML='<section class="card"><h2>Loading…</h2></section>';
+try{
+const ranges=CATS.map(c=>`ranges=${encodeURIComponent(c+"!A2:D100")}`).join("&");
+const url=`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?${ranges}&key=${API_KEY}`;
+const res=await fetch(url);
+if(!res.ok)throw new Error("Sheet request failed ("+res.status+"). Check SHEET_ID, API_KEY, tab names and sharing settings.");
+const data=await res.json();
+B={};
+(data.valueRanges||[]).forEach((vr,idx)=>{
+let catId=CATS[idx],cat={n:"",e:"",feel:[],wait:[],cost:[],control:[],not:[],q:[],s:[],a:"",momentAudio:"",choiceAudio:""};
+(vr.values||[]).forEach(r=>{
+const[type,id,text,audio]=r;
+if(!type)return;
+if(type==="meta"){if(id==="name")cat.n=text;else if(id==="emoji")cat.e=text;else if(id==="affirmation")cat.a=text;else if(id==="moment_audio")cat.momentAudio=audio||text||"";else if(id==="choice_audio")cat.choiceAudio=audio||text||""}
+else if(cat[type])cat[type].push({id,text,audio:audio||""});
+});
+B[catId]=cat;
+});
+if(!Object.values(B).some(c=>c.feel.length))throw new Error("No rows found. Check the tab names/ranges.");
+home();
+}catch(err){
+A.innerHTML='<section class="card"><h2>Could not load data</h2><p class="sub">'+err.message+'</p></section>';
+}
+}
+function home(){A.innerHTML='<section class="card"><h2>What burden are you carrying?</h2><p class="sub">Choose the area that feels heavy right now.</p><div class="grid">'+Object.entries(B).map(([k,b])=>`<button class="choice" onclick="start('${k}')"><span class="e">${b.e}</span>${b.n}</button>`).join("")+'</div></section>'}
+function start(id){st={id:id,feel:[],wait:[],cost:[],q:0,sol:[]};multi("What are you feeling most strongly?","feel")}
+function multi(title,type){let b=B[st.id],items=b[type];A.innerHTML=`<section class="card"><span class="badge">${b.e} ${b.n}</span><h2 style="margin-top:16px">${title}</h2><p class="sub">Select one or more.</p>${items.map((x,i)=>`<button class="multi ${st[type].includes(i)?"selected":""}" onclick="toggle('${type}',${i})">${x.text}</button>`).join("")}<button class="btn" onclick="go('${type}')">Continue →</button></section>`}
+function toggle(type,i){let a=st[type],wasSelected=a.includes(i);wasSelected?st[type]=a.filter(x=>x!==i):a.push(i);if(type==="feel"&&!wasSelected){let url=B[st.id].feel[i].audio;if(url){try{new Audio(url).play().catch(()=>{})}catch(e){}}}multi(type==="feel"?"What are you feeling most strongly?":type==="wait"?"What are you waiting for?":"While you are waiting, what is it costing you?",type)}
+function go(type){if(!st[type].length){alert("Please choose at least one.");return}if(type==="feel")feelingCommentary();else if(type==="wait")multi("While you are waiting, what is it costing you?","cost");else question()}
+function feelingCommentary(){let b=B[st.id],selected=st.feel.map(i=>b.feel[i].text).join(", ");A.innerHTML=`<section class="card" style="text-align:center"><span class="badge">${b.e} ${b.n}</span><h2 style="margin-top:16px">Take a moment</h2><p class="sub">You selected: <strong>${selected}</strong></p><div class="take" style="text-align:left"><p><strong>Before we go further, pause for a moment.</strong></p><p>Notice what you are feeling without judging yourself.</p><p>You don't have to solve it immediately.</p><p>Just become aware of what is happening within you.</p></div><button class="audioBtn" onclick="playFeelingCommentary()">🔊 Play commentary</button><button class="btn" onclick="multi('What are you waiting for?','wait')">Continue →</button><button class="btn back" onclick="multi('What are you feeling most strongly?','feel')">Back</button></section>`}
+function playFeelingCommentary(){let b=B[st.id];if(!b.momentAudio){alert("No audio configured (moment_audio) for this category.");return}try{new Audio(b.momentAudio).play().catch(e=>alert("Audio failed: "+e.name+" - "+e.message))}catch(e){alert("Audio failed: "+e.message)}}
+function control(){let b=B[st.id];A.innerHTML=`<section class="card"><h2>What can you control?</h2><p class="sub">Separate what you can influence from what you cannot guarantee.</p><div class="cols"><div class="box in"><b>🟢 In my control</b><ul>${b.control.map(x=>`<li>${x.text}</li>`).join("")}</ul></div><div class="box out"><b>🔴 Not in my control</b><ul>${b.not.map(x=>`<li>${x.text}</li>`).join("")}</ul></div></div><div class="feedback take"><b>💡 The shift</b><br>You may influence people or situations. But you cannot guarantee another person's choices.<br><br><strong>Where will you put your energy?</strong></div><button class="btn" onclick="solutions()">What will you choose? →</button></section>`}
+function question(){let b=B[st.id],q=b.q[st.q];A.innerHTML=`<section class="card" style="text-align:center"><span class="badge">${b.e} ${b.n} • Question ${st.q+1} of ${b.q.length}</span><h2 style="margin-top:18px">${q.text}</h2><p class="sub">Think honestly. There is no need for a perfect answer.</p><div class="answerrow"><button class="answer yes" onclick="ans()">YES</button><button class="answer no" onclick="ans()">NO</button></div></section>`}
+function ans(){st.q++;if(st.q<B[st.id].q.length)question();else control()}
+function solutions(){let b=B[st.id];A.innerHTML=`<section class="card"><h2>What will you choose?</h2><p class="sub">Select one or more responses that are within your control.</p>${b.s.map((x,i)=>`<button class="multi ${st.sol.includes(i)?"selected":""}" onclick="sel(${i})">${x.text}</button>`).join("")}<button class="btn" onclick="choiceCommentary()">Continue →</button><button class="btn back" onclick="control()">Back</button></section>`}
+function sel(i){st.sol.includes(i)?st.sol=st.sol.filter(x=>x!==i):st.sol.push(i);solutions()}
+function choiceCommentary(){let b=B[st.id],selected=st.sol.map(i=>b.s[i].text).join(", ");A.innerHTML=`<section class="card" style="text-align:center"><div style="font-size:44px">🧭</div><span class="badge">${b.e} ${b.n}</span><h2 style="margin-top:18px">A moment to remember your choice</h2><p class="sub">You chose: <strong>${selected}</strong></p><div class="take" style="text-align:left"><p><strong>You don't need to change everything at once.</strong></p><p>Take one small step that you are genuinely willing to try.</p><p>Remember your choice when the same situation comes again.</p><div class="affirm">"${b.a}"</div></div><button class="audioBtn" onclick="playChoiceCommentary()">🔊 Play commentary</button><button class="btn" onclick="release()">Continue to Write & Release →</button><button class="btn back" onclick="solutions()">Back</button></section>`}
+function playChoiceCommentary(){let b=B[st.id];if(!b.choiceAudio){alert("No audio configured (choice_audio) for this category.");return}try{new Audio(b.choiceAudio).play().catch(e=>alert("Audio failed: "+e.name+" - "+e.message))}catch(e){alert("Audio failed: "+e.message)}}
+function release(){if(!st.sol.length){alert("Please choose at least one solution.");return}let b=B[st.id];A.innerHTML=`<section class="card" style="text-align:center"><div style="font-size:44px">🪨</div><h2>Write & Release</h2><p>Take a small piece of paper.</p><div class="take" style="text-align:left"><b>Write down:</b><ul><li>The burden you are carrying</li><li>What you are ready to let go of</li></ul></div><p><strong>Now tear the paper and put it in the dustbin / Release Box.</strong></p><p class="sub">The problem may still need action. You are choosing not to carry unnecessary emotional burden while you deal with it.</p><div class="take" style="text-align:left"><b>🌱 Your selected solutions</b><ul>${st.sol.map(i=>`<li>${b.s[i].text}</li>`).join("")}</ul></div><div class="take" style="text-align:left"><b>💬 Your affirmation</b><div class="affirm">"${b.a}"</div></div><button class="btn" onclick="home()">Finish</button></section>`}
+loadData();
+</script></body></html>
